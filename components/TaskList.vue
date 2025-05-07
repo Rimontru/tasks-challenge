@@ -22,8 +22,8 @@
 							>
 								<template #prepend>
 									<v-checkbox
-										v-model="task.is_completed"
-										@change="updateTaskStatus(task)"
+										:model-value="task.is_completed === 1"
+										:readonly="true"
 									/>
 								</template>
 								<v-list-item-title
@@ -51,91 +51,19 @@
 			</v-col>
 		</v-row>
 
-		<!-- Task Dialog -->
-		<v-dialog
+		<!-- Lazy loaded dialogs to avoid loading all dialogs at once -->
+		<LazyTaskDialog
+			v-if="dialog"
 			v-model="dialog"
-			max-width="600px"
-		>
-			<v-card>
-				<v-card-title>
-					<span>{{ editedTask.id ? 'Edit Task' : 'New Task' }}</span>
-				</v-card-title>
-				<v-card-text>
-					<v-form
-						ref="form"
-						v-model="valid"
-					>
-						<v-text-field
-							v-model="editedTask.title"
-							label="Title"
-							:rules="[(v) => !!v || 'Title is required']"
-							required
-						/>
-						<v-checkbox
-							v-model="editedTask.is_completed"
-							label="Completed"
-						/>
-						<v-text-field
-							v-model="editedTask.due_date"
-							label="Due Date"
-							type="date"
-						/>
-						<v-textarea
-							v-model="editedTask.description"
-							label="Description"
-						/>
-						<v-textarea
-							v-model="editedTask.comments"
-							label="Comments"
-						/>
-						<v-text-field
-							v-model="editedTask.tags"
-							label="Tags"
-							hint="Separate tags with commas"
-						/>
-					</v-form>
-				</v-card-text>
-				<v-card-actions>
-					<v-spacer />
-					<v-btn
-						color="error"
-						@click="dialog = false"
-						>Cancel</v-btn
-					>
-					<v-btn
-						color="primary"
-						:disabled="!valid"
-						@click="saveTask"
-					>
-						Save
-					</v-btn>
-				</v-card-actions>
-			</v-card>
-		</v-dialog>
+			:task-id="selectedTaskId"
+			@save="saveTask"
+		/>
 
-		<!-- Delete Confirmation Dialog -->
-		<v-dialog
+		<LazyDeleteTaskDialog
+			v-if="deleteDialog"
 			v-model="deleteDialog"
-			max-width="400px"
-		>
-			<v-card>
-				<v-card-title>Delete Task</v-card-title>
-				<v-card-text> Are you sure you want to delete this task? </v-card-text>
-				<v-card-actions>
-					<v-spacer />
-					<v-btn
-						color="primary"
-						@click="deleteDialog = false"
-						>Cancel</v-btn
-					>
-					<v-btn
-						color="error"
-						@click="deleteTask"
-						>Delete</v-btn
-					>
-				</v-card-actions>
-			</v-card>
-		</v-dialog>
+			@confirm="deleteTask"
+		/>
 	</v-container>
 </template>
 
@@ -146,20 +74,8 @@ import { taskService, type Task } from '~/services/taskService';
 const tasks = ref<Task[]>([]);
 const dialog = ref(false);
 const deleteDialog = ref(false);
-const valid = ref(false);
-const form = ref();
 const taskToDelete = ref<Task | null>(null);
-
-const defaultTask: Task = {
-	title: '',
-	is_completed: 0,
-	due_date: '',
-	description: '',
-	comments: '',
-	tags: '',
-};
-
-const editedTask = ref<Task>({ ...defaultTask });
+const selectedTaskId = ref<number | undefined>();
 
 const loadTasks = async () => {
 	try {
@@ -170,36 +86,22 @@ const loadTasks = async () => {
 };
 
 const openTaskDialog = (task?: Task) => {
-	if (task) {
-		editedTask.value = { ...task };
-	} else {
-		editedTask.value = { ...defaultTask };
-	}
+	selectedTaskId.value = task?.id;
 	dialog.value = true;
 };
 
-const saveTask = async () => {
-	if (!form.value.validate()) return;
-
+const saveTask = async (task: Task) => {
 	try {
-		if (editedTask.value.id) {
-			await taskService.updateTask(editedTask.value.id, editedTask.value);
+		if (task.id) {
+			await taskService.updateTask(task.id, task);
 		} else {
-			await taskService.createTask(editedTask.value);
+			await taskService.createTask(task);
 		}
 		dialog.value = false;
 		loadTasks();
 	} catch (error) {
+		// TODO: show error message on dialog
 		console.error('Error saving task:', error);
-	}
-};
-
-const updateTaskStatus = async (task: Task) => {
-	try {
-		await taskService.updateTask(task.id!, task);
-	} catch (error) {
-		console.error('Error updating task status:', error);
-		task.is_completed = !task.is_completed; // Revert on error
 	}
 };
 
